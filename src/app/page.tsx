@@ -167,7 +167,7 @@ export default function FeelProdStudioDashboard() {
   const getFastPrompt = () => {
     if (!manifest) return "";
     return `[OUTIL VISÉ : STITCH]
-Je souhaite prototyper une application avec Stitch (React + Tailwind). Voici le cahier des charges (FeelProd Manifest) :
+Je souhaite prototyper une application avec Stitch (React + Tailwind). Voici le cahier des charges (Project Manifest) :
 
 📌 FORMAT CIBLE PRIORITAIRE : ${deviceType.toUpperCase()} (Design conçu en ${deviceType} first).
 
@@ -189,9 +189,9 @@ Génère la version MVP de ces écrans avec les meilleurs composants Tailwind.`;
 
   const getDeepPrompt = () => {
     if (!manifest) return "";
-    return `@Antigravity - MISSION DEEP BUILD EXÉCUTIVE (DNA LOCAL)
+    return `@Antigravity - MISSION DEEP BUILD EXÉCUTIVE
 
-L'utilisateur a validé le manifeste "FeelProd" pour la création du site. Ta mission est de lancer le vrai développement en local sur la machine.
+L'utilisateur a validé le manifeste ci-dessous pour la création du site. Ta mission est de lancer le vrai développement en local sur la machine.
 
 📌 APPROCHE RESPONSIVE CIBLE : ${deviceType.toUpperCase()} FIRST. Toute l'intégration et l'UX doivent être pensées prioritairement pour ce support.
 
