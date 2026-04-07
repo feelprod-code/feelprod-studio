@@ -18,7 +18,7 @@ export async function POST(req: Request) {
           scrapeOptions: { formats: ['markdown', 'html'] } 
         });
         
-        if (res && res.success && res.data && Array.isArray(res.data)) {
+        if (res && (res.success === true || res.status === 'completed') && res.data && Array.isArray(res.data)) {
            let allMd = "";
            let allHtml = "";
            
