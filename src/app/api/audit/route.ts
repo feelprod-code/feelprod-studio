@@ -9,20 +9,35 @@ export async function POST(req: Request) {
     
     if (url && url.trim().length > 0) {
       console.log(`🚀 [AUDIT] Scraping de : ${url}`);
-      // 1. Scraping avec Firecrawl
+      // 1. Scraping avec Firecrawl (Mode Crawl Intégral : A to Z)
       try {
         const firecrawl = new FirecrawlApp({ apiKey: process.env.FIRECRAWL_API_KEY || "missing_key" });
-        const res = await firecrawl.scrape(url.trim(), { formats: ['markdown', 'html'] });
+        // Lancement de l'aspiration intégrale (jusqu'à 12 pages pour éviter les timeouts excessifs, mais suffisant pour capter l'ADN global)
+        const res = await (firecrawl as any).crawl(url.trim(), { 
+          limit: 12, 
+          scrapeOptions: { formats: ['markdown', 'html'] } 
+        });
         
-        const contentMarkdown = (res as any)?.data?.markdown || (res as any)?.markdown || "";
-        const contentHtml = (res as any)?.data?.html || (res as any)?.html || "";
-        scrapeResult = { markdown: contentMarkdown + "\n\n--- HTML PARTIEL POUR COULEURS/MEDIAS ---\n\n" + contentHtml.substring(0, 40000) };
-        
-        if (!scrapeResult.markdown || scrapeResult.markdown.length === 0) {
-          console.warn(`Erreur Firecrawl : le contenu est vide. Réponse brute :`, JSON.stringify(res).substring(0, 500));
+        if (res && res.success && res.data && Array.isArray(res.data)) {
+           let allMd = "";
+           let allHtml = "";
+           
+           for (const page of res.data) {
+              const md = page.markdown || "";
+              const html = page.html || "";
+              const source = page.metadata?.sourceURL || url;
+              
+              allMd += `\n\n--- SUITE DU CONTENU WEB (Source de la sous-page : ${source}) ---\n\n${md}`;
+              allHtml += `\n\n--- HTML PARTIEL (Source: ${source}) ---\n\n${html.substring(0, 3000)}`;
+           }
+           
+           scrapeResult = { markdown: allMd + "\n\n--- COMPILATION DU HTML PARTIEL ---\n\n" + allHtml.substring(0, 30000) };
+           console.log(`✅ [AUDIT] Crawl intégral réussi : ${res.data.length} pages aspirées.`);
+        } else {
+           console.warn(`Erreur Firecrawl Crawl : le format de retour est inattendu. Réponse brute :`, JSON.stringify(res).substring(0, 500));
         }
       } catch(e) {
-        console.warn("⚠️ Pas de clé Firecrawl ou erreur :", e);
+        console.warn("⚠️ Pas de clé Firecrawl ou erreur lors du crawl :", e);
       }
     } else {
       console.log(`🚀 [AUDIT] Mode "From Scratch" activé. Pas d'URL cible à analyser.`);
@@ -62,10 +77,12 @@ ${file ? `\n\nUN DOCUMENT (IMAGE) AINSI QUE CETTE REQUETE SONT FOURNIS EN PIECE 
 ${uploadedFiles?.length > 0 ? `\n\n📢 IMPORTANT : L'utilisateur a explicitement uploadé les médias physiques ci-dessous pour son projet. Tu DOIS ABSOLUMENT inclure exactement ces chemins locaux dans la partie "media_links" de ta réponse JSON.\nListe des assets uploadés locaux :\n${uploadedFiles.map((f:string) => "- " + f).join('\n')}` : ''}
 
 Ton but n'est PAS de tout détruire, mais de concevoir une stratégie de création web premium.
-1. ${url ? `Dresse d'abord le bilan EXHAUSTIF de l'ancien site cible (tu as le markdown et le HTML partiel). Tu DOIS extraire avec une rigueur absolue : le code couleur (hexa), la typographie, TOUS les paragraphes et textes exhaustifs, TOUTES les images (src), TOUTES les vidéos, et la structure exacte des pages.` : `Commence par analyser les inspirations et le brief fourni pour comprendre la direction du projet.`}
+1. ${url ? `Dresse d'abord le bilan EXHAUSTIF de TOUTES LES PAGES ASPIRÉES (tu as le markdown de multiples URLs). Tu DOIS extraire avec une rigueur absolue : le code couleur (hexa), la typographie, TOUS les paragraphes et textes exhasutifs de TOUTES LES SOUS-PAGES, TOUTES les images (src), TOUTES les vidéos, et la structure exacte de l'arborescence.` : `Commence par analyser les inspirations et le brief fourni pour comprendre la direction du projet.`}
 2. IMPORTANT: Si des assets uploadés locaux ont été listés ci-dessus, tu dois imperativement les inclure DANS LA LISTE "media_links" de la section "existing_assets".
-3. Ensuite, conçois une stratégie ${url ? `de refonte qui CONSERVE TOUT le contenu textuel et médiatique` : `de conception`} avec une amélioration massive de la forme. 
-⚠️ TRÉS IMPORTANT : Ne résume pas le contenu de l'URL cible, tu DOIS extraire l'intégrité de l'existant.
+3. Ensuite, conçois une stratégie ${url ? `de refonte qui CONSERVE TOUT le contenu textuel et médiatique` : `de conception`} avec une amélioration massive de la forme.
+4. INDISPENSABLE: Puisque nous construisons une application web complexe, tu DOIS analyser les besoins en interface utilisateur. Si le contenu comporte des galeries, des listes d'avantages, des tarifs multiples, un agenda de réservation, ou de longues FAQ, tu DOIS IMPÉRATIVEMENT recommander la création de composants spécifiques dans \`structure_proposals\` (ex: Diaporamas / Carrousels, Système d'Onglets, Formulaires Avancés, Accordéons, Cartes Interactives).
+
+⚠️ TRÉS IMPORTANT : Ne résume pas le contenu de l'URL cible, tu DOIS extraire l'intégrité de toutes les sous-pages aspirées.
 
 Format JSON EXACT requis (et uniquement celà, pas de blabla):
 {
@@ -74,8 +91,8 @@ Format JSON EXACT requis (et uniquement celà, pas de blabla):
     "typography": ["Nom de font 1", "Nom de font 2"],
     "pages_content": [
       {
-        "page_url_or_name": "Nom de la Page (ex: Accueil, Prestations, etc.)",
-        "full_text": "Copie TOUS LES MOTS de cette page, dans l'ordre du flux. Il faut absolument CONSERVER la totalité de l'information (offres, tarifs, adresses, descriptions, éléments clés qui distinguent ce site). Ne fais AUCUN RÉSUMÉ, je veux vraiment tout le contenu brut organisé pour pouvoir le replacer."
+        "page_url_or_name": "Nom de la Page (ex: Accueil, Prestations, Tarifs, Média, Agenda, etc.)",
+        "full_text": "Copie TOUS LES MOTS de cette sous-page spécifique. CONSERVER la totalité de l'information (offres, tarifs, adresses, agenda). Ne fais AUCUN RÉSUMÉ, je veux vraiment tout le contenu brut organisé."
       }
     ],
     "strong_texts": ["Texte fort 1", "Slogan 2"],
@@ -83,13 +100,12 @@ Format JSON EXACT requis (et uniquement celà, pas de blabla):
     "current_vibe": "Description de l'identité visuelle d'origine du site."
   },
   "proposed_strategy": {
-    "content_strategy": "Comment on conserve le texte tout en le mettant mieux en valeur",
+    "content_strategy": "Comment on conserve les textes/agendas/dates tout en le mettant mieux en valeur",
     "visual_audit": "Analyse des couleurs/design et proposition de Direction Artistique",
-    "structure_proposals": "Quel type de mise en page adopter pour moderniser la structure",
+    "structure_proposals": "Arborescence multi-pages et DÉTECTION DE COMPOSANTS SPÉCIAUX OBLIGATOIRES (ex: 'Un Carrousel pour les photos du cabinet, un composant Onglets pour les Tarifs, et un Formulaire Avancé pour l'Agenda'). C'est vital ! Spécifie ce qu'il faut construire.",
     "animation_style": "Propositions d'animations (ex: Scroll reveal, parallax)",
     "image_prompts": [
-      "Prompt midjourney 1",
-      "Prompt midjourney 2"
+      "Prompt midjourney 1"
     ],
     "vibe_description": "L'angle éditorial et la vibe visuelle du NOUVEAU site (2 phrases max)"
   }
