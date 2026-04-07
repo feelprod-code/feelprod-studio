@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import FirecrawlApp from '@mendable/firecrawl-js';
+import { jsonrepair } from 'jsonrepair';
 
 export async function POST(req: Request) {
   try {
@@ -84,7 +85,8 @@ Ton but n'est PAS de tout détruire, mais de concevoir une stratégie de créati
 3. Ensuite, conçois une stratégie ${url ? `de refonte qui CONSERVE TOUT le contenu textuel et médiatique` : `de conception`} avec une amélioration massive de la forme.
 4. INDISPENSABLE: Puisque nous construisons une application web complexe, tu DOIS analyser les besoins en interface utilisateur. Si le contenu comporte des galeries, des listes d'avantages, des tarifs multiples, un agenda de réservation, ou de longues FAQ, tu DOIS IMPÉRATIVEMENT recommander la création de composants spécifiques dans \`structure_proposals\` (ex: Diaporamas / Carrousels, Système d'Onglets, Formulaires Avancés, Accordéons, Cartes Interactives).
 
-⚠️ TRÉS IMPORTANT : Ne résume pas le contenu de l'URL cible, tu DOIS extraire l'intégrité de toutes les sous-pages aspirées.
+⚠️ TRÉS IMPORTANT : Ne résume pas le contenu de l'URL cible, tu DOIS extraire l'intégrité de toutes les sous-pages.
+⚠️ SÉCURITÉ JSON : Tu DOIS OBLIGATOIREMENT échapper tous les guillemets (") avec un antislash (\") à l'intérieur de tes textes sous peine de casser le parseur JSON. Évite les retours à la ligne litéraux dans les valeurs textuelles, utilise \n !
 
 Format JSON EXACT requis (et uniquement celà, pas de blabla):
 {
@@ -156,7 +158,15 @@ Format JSON EXACT requis (et uniquement celà, pas de blabla):
       aiText = aiText.replace(/\`\`\`\n?/, "").replace(/\`\`\`$/, "").trim();
     }
     
-    const manifest = JSON.parse(aiText);
+    let manifest;
+    try {
+      // jsonrepair corrige magiquement les JSON tronqués, les guillemets non échappés et les virgules manquantes !
+      const repairedJson = jsonrepair(aiText);
+      manifest = JSON.parse(repairedJson);
+    } catch (e: any) {
+      console.warn("⚠️ jsonrepair a échoué. Le texte IA n'était définitivement pas réparable.", e);
+      throw new Error("L'IA a généré un JSON illisible ou a été coupée trop tôt. Erreur: " + e.message);
+    }
 
     console.log(`✅ [GEMINI] Manifeste généré avec succès.`);
 
