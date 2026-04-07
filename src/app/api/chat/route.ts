@@ -1,12 +1,8 @@
 import { NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
-
 export async function POST(req: Request) {
   try {
-    const { messages, manifest } = await req.json();
+    const { messages, manifest, files } = await req.json();
 
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    
     // Format history
     const historyText = messages.map((m: any) => `${m.role === 'user' ? 'Directeur' : 'Assistant'}: ${m.content}`).join("\n");
 
@@ -36,15 +32,47 @@ Format JSON EXACT requis (strictement un objet JSON valide, sans bloc markdown) 
 }
 `;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-pro',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json'
+    const contentParts: any[] = [{ type: "text", text: prompt }];
+
+    if (files && Array.isArray(files)) {
+      for (const file of files) {
+        if (file.data && file.mimeType) {
+          contentParts.push({
+            type: "image_url",
+            image_url: {
+              url: `data:${file.mimeType};base64,${file.data}`
+            }
+          });
+        }
       }
+    }
+
+    const openRouterRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-pro",
+        max_tokens: 4000,
+        messages: [
+          { role: "user", content: contentParts }
+        ],
+        response_format: { type: "json_object" }
+      })
     });
 
-    let aiText = response.text || "{}";
+    const openRouterData = await openRouterRes.json();
+    let aiText = openRouterData.choices?.[0]?.message?.content || "{}";
+    
+    // Nettoyage markdown du JSON
+    if (aiText.startsWith("```json")) {
+      aiText = aiText.replace(/```json\n?/, "").replace(/```$/, "").trim();
+    } else if (aiText.startsWith("```")) {
+      aiText = aiText.replace(/```\n?/, "").replace(/```$/, "").trim();
+    }
+
     const data = JSON.parse(aiText);
 
     return NextResponse.json({ success: true, ...data });

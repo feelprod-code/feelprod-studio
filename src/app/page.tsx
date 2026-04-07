@@ -1,10 +1,43 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Copy, Wand2, Settings2, Code2, CheckCircle2, Activity, X, Send, Bot, User, Flame, ChevronDown, ChevronUp, Upload, File, Compass, Layers, Smartphone, Tablet, Monitor } from "lucide-react";
+import { Copy, Wand2, Settings2, Code2, CheckCircle2, Activity, X, Send, Bot, User, Flame, ChevronDown, ChevronUp, Upload, File, Compass, Layers, Smartphone, Tablet, Monitor, Mic, MicOff, Loader2 } from "lucide-react";
 
 type Stage = "idle" | "extracting" | "audit" | "visuals" | "vibe-check" | "builder" | "done";
+
+const ImageWithLoader = ({ src, alt }: { src: string, alt: string }) => {
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+
+  return (
+    <div className="relative w-full aspect-video bg-gray-50 rounded-xl overflow-hidden border border-gray-200">
+      {!loaded && !error && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center z-10">
+          <Loader2 className="w-8 h-8 animate-spin text-accent-cyan mb-4" />
+          <p className="text-sm font-mono text-gray-500 uppercase tracking-widest leading-relaxed">Création de l'image en cours...</p>
+          <p className="text-xs text-gray-400 mt-2 font-mono">(Flux Engine tourne à plein régime, 5 à 15 sec approx.)</p>
+        </div>
+      )}
+      {error && (
+         <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center z-10 bg-gray-50 text-gray-600 border border-red-200">
+           <p className="text-sm font-mono uppercase tracking-widest text-red-400 mb-2">Erreur Serveur (Images bloquées)</p>
+           <p className="text-xs">Pas de panique, ce n'est qu'une option d'illustration. Tu peux ignorer cette erreur et scroller vers le bas pour cliquer sur <strong>Valider & Bâtir l'Interface</strong> afin de concevoir le site web !</p>
+         </div>
+      )}
+      <motion.img 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: loaded ? 1 : 0, scale: loaded ? 1 : 0.95 }}
+        transition={{ duration: 0.5 }}
+        src={src} 
+        alt={alt} 
+        onLoad={() => setLoaded(true)}
+        onError={() => setError(true)}
+        className="absolute inset-0 w-full h-full object-cover shadow-sm"
+      />
+    </div>
+  );
+};
 
 export default function FeelProdStudioDashboard() {
   const [url, setUrl] = useState("");
@@ -20,7 +53,10 @@ export default function FeelProdStudioDashboard() {
   // Advanced options
   const [inspirationUrl, setInspirationUrl] = useState("");
   const [briefText, setBriefText] = useState("");
-  const [brandFile, setBrandFile] = useState<File | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const recognitionRef = useRef<any>(null);
+  const [brandFiles, setBrandFiles] = useState<File[]>([]);
+  const [chatFiles, setChatFiles] = useState<File[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [chatMessage, setChatMessage] = useState("");
   const [chatHistory, setChatHistory] = useState([
@@ -28,32 +64,94 @@ export default function FeelProdStudioDashboard() {
   ]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setBrandFile(e.target.files[0]);
+    if (e.target.files && e.target.files.length > 0) {
+      setBrandFiles(prev => [...prev, ...Array.from(e.target.files!)]);
     }
+  };
+
+  const toggleRecording = () => {
+    if (isRecording && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsRecording(false);
+      return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("La dictée vocale n'est pas supportée par votre navigateur (utilisez Safari, Chrome ou Edge).");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
+    recognition.lang = 'fr-FR';
+    recognition.continuous = true;
+    recognition.interimResults = false;
+
+    recognition.onstart = () => setIsRecording(true);
+    
+    recognition.onresult = (event: any) => {
+      let transcript = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          transcript += event.results[i][0].transcript + " ";
+        }
+      }
+      if (transcript) {
+        setBriefText((prev) => (prev ? prev + " " : "") + transcript.trim());
+      }
+    };
+
+    recognition.onerror = () => setIsRecording(false);
+    recognition.onend = () => setIsRecording(false);
+
+    recognition.start();
   };
 
   const startReplicator = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!url) return;
+    if (!url && !inspirationUrl && !briefText && brandFiles.length === 0) return;
     
     setStage("extracting");
     setErrorMsg(null);
     
     try {
-      let fileBase64 = null;
-      let fileMimeType = null;
-      if (brandFile) {
-        const reader = new FileReader();
-        const base64Promise = new Promise<string>((resolve) => {
-          reader.onloadend = () => {
-            const result = reader.result as string;
-            resolve(result.split(',')[1]); // get base64 data
-          };
-        });
-        reader.readAsDataURL(brandFile);
-        fileBase64 = await base64Promise;
-        fileMimeType = brandFile.type;
+      let uploadedFileUrls: string[] = [];
+      let firstImageBase64 = null;
+      let firstImageMimeType = null;
+      
+      if (brandFiles.length > 0) {
+        // Upload physical files locally
+        const formData = new FormData();
+        brandFiles.forEach(f => formData.append('files', f));
+        
+        try {
+          const uploadRes = await fetch('/api/upload', {
+             method: 'POST',
+             body: formData
+          });
+          const uploadData = await uploadRes.json();
+          if (uploadData.success && uploadData.files) {
+             uploadedFileUrls = uploadData.files.map((f:any) => f.url);
+          }
+        } catch (e) {
+          console.warn("Upload local échoué:", e);
+        }
+
+        // Convert only the first image for Gemini vision analysis context
+        const firstImage = brandFiles.find(f => f.type.startsWith('image/'));
+        if (firstImage) {
+          const reader = new FileReader();
+          const base64Promise = new Promise<string>((resolve) => {
+            reader.onloadend = () => {
+              const result = reader.result as string;
+              resolve(result.split(',')[1]);
+            };
+          });
+          reader.readAsDataURL(firstImage);
+          firstImageBase64 = await base64Promise;
+          firstImageMimeType = firstImage.type;
+        }
       }
 
       const res = await fetch('/api/audit', {
@@ -63,7 +161,8 @@ export default function FeelProdStudioDashboard() {
            url, 
            inspirationUrl, 
            briefText, 
-           file: fileBase64 ? { data: fileBase64, mimeType: fileMimeType } : null 
+           file: firstImageBase64 ? { data: firstImageBase64, mimeType: firstImageMimeType } : null,
+           uploadedFiles: uploadedFileUrls
         })
       });
       const data = await res.json();
@@ -87,24 +186,8 @@ export default function FeelProdStudioDashboard() {
   };
 
   const approveVibe = async () => {
-    setStage("visuals");
+    setStage("builder");
     setErrorMsg(null);
-    try {
-      const res = await fetch('/api/visuals', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompts: manifest?.image_prompts || [] })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setGeneratedImages(data.images);
-      } else {
-        throw new Error(data.error || "Génération des images échouée.");
-      }
-    } catch (e: any) {
-      console.error(e);
-      setErrorMsg(e.message || "Erreur avec Nano Banana 2.");
-    }
   };
 
   const sendChatMessage = async (e: React.FormEvent) => {
@@ -116,12 +199,26 @@ export default function FeelProdStudioDashboard() {
     setChatMessage("");
     
     try {
+      let preparedFiles: any[] = [];
+      if (chatFiles.length > 0) {
+        preparedFiles = await Promise.all(chatFiles.map(async (f) => {
+          const base64Url = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(f);
+          });
+          return { data: base64Url.split(',')[1], mimeType: f.type };
+        }));
+      }
+
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newHistory, manifest })
+        body: JSON.stringify({ messages: newHistory, manifest, files: preparedFiles })
       });
       const data = await res.json();
+      
+      setChatFiles([]); // Reset after send
       
       if (!data.success) {
         throw new Error(data.error || "Erreur de communication avec l'IA.");
@@ -152,9 +249,8 @@ export default function FeelProdStudioDashboard() {
     stage === "idle" ? 0 : 
     stage === "extracting" ? 1 : 
     stage === "audit" ? 1 : 
-    stage === "visuals" ? 2 : 
-    stage === "vibe-check" ? 3 : 
-    stage === "builder" ? 4 : 5;
+    stage === "vibe-check" ? 2 : 
+    stage === "builder" ? 3 : 4;
 
   const removeAsset = (type: 'strong_texts' | 'media_links', index: number) => {
     setManifest((prev: any) => {
@@ -198,10 +294,13 @@ L'utilisateur a validé le manifeste ci-dessous pour la création du site. Ta mi
 RÈGLES IMPÉRATIVES AVANT DE CODER :
 1. Lis les composants et règles strictes présents dans mon dossier local \`_MY_AI_DNA/skills\` (Notamment les règles React, Framer Motion, et SEO).
 2. Crée un nouveau dossier projet propre (ex: client-site-final).
-3. Intègre ce contenu original :
-${manifest.existing_assets?.strong_texts?.map((t: string) => `- ${t}`).join('\n')}
+3. Intègre ce contenu original EXHAUSTIF (ne perds aucune information de la Vibe Check) :
+${manifest.existing_assets?.full_content || manifest.existing_assets?.strong_texts?.map((t: string) => `- ${t}`).join('\n')}
 
-4. Applique cette direction artistique orfèvre :
+4. Médias à intégrer (Vidéos, Images DJI/Sony, etc.) :
+${manifest.existing_assets?.media_links?.map((m: string) => `- ${m}`).join('\n') || '- Aucun média fourni, utiliser des placeholders cohérents.'}
+
+5. Applique cette direction artistique orfèvre :
 ${manifest.proposed_strategy?.visual_audit}
 ${manifest.proposed_strategy?.vibe_description}
 
@@ -268,11 +367,16 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
             <button 
               type="submit"
               disabled={(!url && !inspirationUrl && !briefText) || (stage !== "idle" && stage !== "vibe-check")}
-              className={`text-white px-10 rounded-2xl font-[family-name:var(--font-bebas-neue)] tracking-wider text-xl transition-all disabled:opacity-50 flex items-center justify-center min-w-[220px] shadow-lg ${
-                stage === 'done' ? 'bg-[#5A9C51] hover:opacity-90' : 'bg-gradient-to-r from-[#FF9F1C] to-[#E3651F] hover:opacity-90'
+              className={`text-white px-10 rounded-2xl font-[family-name:var(--font-bebas-neue)] tracking-wider text-xl transition-all flex items-center justify-center min-w-[220px] shadow-lg ${
+                (!url && !inspirationUrl && !briefText) ? "opacity-50" : (stage !== "idle" && stage !== "vibe-check" ? "opacity-90 cursor-not-allowed" : "")
+              } ${
+                (stage === 'builder' || stage === 'done') ? 'bg-[#5A9C51] hover:opacity-90' : 'bg-gradient-to-r from-[#FF9F1C] to-[#E3651F] hover:opacity-90'
               }`}
             >
-              {stage === "idle" ? "LANCER LE MOTEUR" : stage === "extracting" ? "EXTRACTION..." : stage === "done" ? "TERMINÉ ! (Simulation)" : "PROCESSING..."}
+              {stage === "idle" ? "LANCER LE MOTEUR" 
+               : stage === "extracting" ? <span className="flex items-center gap-2"><Loader2 className="w-5 h-5 animate-spin" /> EXTRACTION...</span> 
+               : (stage === "builder" || stage === "done") ? <span className="flex items-center gap-2"><CheckCircle2 className="w-5 h-5" /> TERMINÉ</span> 
+               : <span className="flex items-center gap-2"><Loader2 className="w-5 h-5 animate-spin" /> PROCESSING...</span>}
             </button>
           </form>
           
@@ -334,32 +438,48 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
                         </div>
                       </div>
                       <div>
-                        <label className="block text-xs font-mono text-gray-400 mb-2 uppercase tracking-wide">Directives (Briefing)</label>
-                        <textarea 
-                          value={briefText}
-                          onChange={e => setBriefText(e.target.value)}
-                          placeholder="Ex: 'Utilise des tons sombres, esprit cinéma. Moins de texte...'..."
-                          className="bg-white border-2 border-gray-300 rounded-xl py-3 px-4 text-sm text-gray-700 w-full h-[120px] focus:outline-none focus:border-gray-500 resize-none transition-colors shadow-none"
-                        />
+                        <label className="block text-xs font-mono text-gray-400 mb-2 uppercase tracking-wide flex justify-between items-center">
+                          <span>Directives (Briefing)</span>
+                          <button 
+                            type="button"
+                            onClick={toggleRecording}
+                            className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] uppercase font-bold transition-all border shadow-sm ${isRecording ? 'bg-red-50 text-red-500 border-red-200 animate-pulse' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-700'}`}
+                          >
+                            {isRecording ? <MicOff className="w-3 h-3" /> : <Mic className="w-3 h-3" />}
+                            {isRecording ? 'Arrêter la dictée' : 'Microphone'}
+                          </button>
+                        </label>
+                        <div className="relative">
+                          <textarea 
+                            value={briefText}
+                            onChange={e => setBriefText(e.target.value)}
+                            placeholder="Ex: 'Utilise des tons sombres, esprit cinéma. Moins de texte...'..."
+                            className={`bg-white border-2 rounded-xl py-3 px-4 text-sm text-gray-700 w-full h-[120px] focus:outline-none resize-none transition-all shadow-none ${isRecording ? 'border-[#FF9F1C] ring-4 ring-[#FF9F1C]/10' : 'border-gray-300 focus:border-gray-500'}`}
+                          />
+                        </div>
                       </div>
                     </div>
 
                     {/* Colonne 2 : Fichier */}
                     <div className="space-y-4 flex flex-col">
                       <label className="block text-xs font-mono text-gray-400 mb-2 uppercase tracking-wide">Dépôt d'Assets (Médias Vidéo DJI/Sony, Photos, PDF)</label>
-                      <label aria-disabled={brandFile !== null} className={`flex-1 border-2 border-dashed ${brandFile ? 'border-gray-200 bg-gray-50 opacity-50 cursor-not-allowed' : 'border-gray-200 bg-white hover:bg-orange-50 hover:border-[#FF9F1C] cursor-pointer'} rounded-xl transition-all flex flex-col items-center justify-center p-6 group`}>
-                        <Upload className={`w-8 h-8 mb-4 transition-colors ${brandFile ? 'text-gray-700/50' : 'text-gray-300 group-hover:text-[#FF9F1C]'}`} />
+                      <label className="flex-1 border-2 border-dashed border-gray-200 bg-white hover:bg-orange-50 hover:border-[#FF9F1C] cursor-pointer rounded-xl transition-all flex flex-col items-center justify-center p-6 group">
+                        <Upload className="w-8 h-8 mb-4 transition-colors text-gray-300 group-hover:text-[#FF9F1C]" />
                         <span className="text-sm text-gray-500 text-center font-medium">Clique ou glisse tes assets FeelProd ici</span>
-                        <span className="text-xs text-gray-400 mt-2 font-mono">MP4, JPG, RAW, PDF (Max 500MB)</span>
-                        <input type="file" accept=".pdf,image/*" onChange={handleFileChange} className="hidden" disabled={brandFile !== null} />
+                        <span className="text-xs text-gray-400 mt-2 font-mono">MP4, JPG, RAW, PDF (Multi-fichiers)</span>
+                        <input type="file" multiple accept=".pdf,image/*,video/*" onChange={handleFileChange} className="hidden" />
                       </label>
-                      {brandFile && (
-                        <div className="flex items-center gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200 shadow-md">
-                           <File className="w-6 h-6 text-gray-700 shrink-0" />
-                           <div className="flex-1 truncate text-sm text-gray-600 font-medium">{brandFile.name}</div>
-                           <button type="button" onClick={() => setBrandFile(null)} className="text-gray-400 hover:text-red-500 transition-colors p-2 bg-gray-50 hover:bg-red-500/10 rounded-lg">
-                             <X className="w-4 h-4" />
-                           </button>
+                      {brandFiles.length > 0 && (
+                        <div className="flex flex-col gap-2 mt-2 max-h-[140px] overflow-y-auto">
+                          {brandFiles.map((file, idx) => (
+                            <div key={idx} className="flex items-center gap-4 bg-gray-50 p-3 rounded-xl border border-gray-200 shadow-sm shrink-0">
+                               <File className="w-5 h-5 text-gray-700 shrink-0" />
+                               <div className="flex-1 truncate text-xs text-gray-600 font-medium">{file.name}</div>
+                               <button type="button" onClick={() => setBrandFiles(prev => prev.filter((_, i) => i !== idx))} className="text-gray-400 hover:text-red-500 transition-colors p-1.5 bg-white shadow-sm border border-gray-100 hover:bg-red-500/10 rounded-lg">
+                                 <X className="w-4 h-4" />
+                               </button>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
@@ -382,7 +502,7 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
         <section className="flex flex-col gap-5">
           <h3 className="text-[10px] font-bold text-gray-300 uppercase tracking-[0.2em] pl-2">Status Pipeline</h3>
           
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <StepCard 
               active={stage === "audit" || stage === "extracting"} 
               done={currentStepNum > 1}
@@ -392,16 +512,8 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
               colorClass="cyan"
             />
             <StepCard 
-              active={stage === "visuals"} 
-              done={currentStepNum > 2}
-              icon={<Settings2 className="w-5 h-5" />}
-              title="Studio Visuel"
-              desc="Nano Banana 2 Assets Gen"
-              colorClass="cyan"
-            />
-            <StepCard 
               active={stage === "vibe-check"} 
-              done={currentStepNum > 3}
+              done={currentStepNum > 2}
               icon={<Activity className="w-5 h-5" />}
               title="Vibe Check"
               desc="Breakpoint Humain"
@@ -410,7 +522,7 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
             />
             <StepCard 
               active={stage === "builder" || stage === "done"} 
-              done={currentStepNum > 4}
+              done={currentStepNum > 3}
               icon={<Code2 className="w-5 h-5" />}
               title="Bâtisseur Code"
               desc="Export App Router Next.js"
@@ -420,44 +532,7 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
         </section>
       )}
 
-      {/* Visuals Gallery */}
-      {stage === "visuals" && (
-        <motion.section 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-panel border border-gray-100 rounded-3xl p-8 backdrop-blur-2xl"
-        >
-          <div className="flex items-center justify-between mb-8">
-            <h3 className="text-2xl font-bold uppercase tracking-tight flex items-center gap-3">
-              <Settings2 className="text-gray-700" /> 
-              Studio Visuel <span className="text-gray-400 font-light">(Nano Banana 2)</span>
-            </h3>
-            {generatedImages.length > 0 && (
-                <button onClick={() => setStage("builder")} className="bg-gray-100 hover:bg-white text-gray-700 hover:text-gray-700 transition-colors px-6 py-2 rounded-xl text-sm font-bold uppercase tracking-wide">
-                  Valider & Bâtir l'Interface
-                </button>
-            )}
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 min-h-[300px]">
-             {generatedImages.length > 0 ? generatedImages.map((img, i) => (
-                 <motion.img 
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    key={i} 
-                    src={img} 
-                    alt={`Generated ${i}`} 
-                    className="rounded-xl border border-gray-200 w-full object-cover shadow-sm" 
-                 />
-             )) : (
-                 <div className="col-span-1 md:col-span-2 flex flex-col items-center justify-center text-center text-gray-400 py-12 border border-dashed border-gray-200 rounded-2xl bg-gray-50">
-                    <div className="w-8 h-8 border-2 border-accent-cyan border-t-transparent rounded-full animate-spin mb-4" />
-                    <p className="font-mono text-sm tracking-widest uppercase">Génération des assets via Nano Banana 2 en cours...</p>
-                 </div>
-             )}
-          </div>
-        </motion.section>
-      )}
 
       {/* Breakpoint Chat Modal (Vibe Check) */}
       <AnimatePresence>
@@ -488,31 +563,31 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
                 <div className="bg-white border border-gray-100 p-5 rounded-2xl">
                     <span className="text-[10px] text-gray-700 font-mono uppercase tracking-widest block mb-2">Conservation du Contenu</span>
                     <p className="text-xs text-gray-700 font-mono leading-relaxed">
-                      {manifest?.content_strategy || "Chargement de la stratégie de contenu..."}
+                      {manifest?.proposed_strategy?.content_strategy || "Chargement de la stratégie de contenu..."}
                     </p>
                 </div>
 
                 <div className="bg-white border border-gray-100 p-5 rounded-2xl">
                     <span className="text-[10px] text-gray-700 font-mono uppercase tracking-widest block mb-2">Audit Visuel & Concurrence</span>
                     <p className="text-xs text-gray-700 font-mono leading-relaxed">
-                      {manifest?.visual_audit || "Analyse des couleurs..."}
+                      {manifest?.proposed_strategy?.visual_audit || "Analyse des couleurs..."}
                     </p>
                 </div>
 
                 <div className="bg-white border border-gray-100 p-5 rounded-2xl">
                     <span className="text-[10px] text-gray-700 font-mono uppercase tracking-widest block mb-2">Structure & Animations</span>
                     <p className="text-xs text-gray-700 font-mono leading-relaxed mb-3">
-                      <strong className="text-gray-700">Layout : </strong>{manifest?.structure_proposals || "..."}
+                      <strong className="text-gray-700">Layout : </strong>{manifest?.proposed_strategy?.structure_proposals || "..."}
                     </p>
                     <p className="text-xs text-gray-700 font-mono leading-relaxed">
-                      <strong className="text-gray-700">Motion : </strong>{manifest?.animation_style || "..."}
+                      <strong className="text-gray-700">Motion : </strong>{manifest?.proposed_strategy?.animation_style || "..."}
                     </p>
                 </div>
 
                 <div className="bg-white border border-gray-100 p-5 rounded-2xl">
                     <span className="text-[10px] text-gray-400 font-mono uppercase tracking-widest block mb-2">Création d'Images (Prompts générés)</span>
                     <ul className="text-xs text-gray-500 font-mono leading-relaxed list-disc pl-4 space-y-2">
-                       {manifest?.image_prompts?.map((prompt: string, i: number) => (
+                       {manifest?.proposed_strategy?.image_prompts?.map((prompt: string, i: number) => (
                          <li key={i}>{prompt}</li>
                        )) || <li>Génération des prompts en cours...</li>}
                     </ul>
@@ -559,13 +634,33 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
                 )}
 
                 {/* Zone de saisie */}
-                <div className="p-6 bg-gray-50 border-t border-gray-100">
+                <div className="p-6 bg-gray-50 border-t border-gray-100 flex flex-col gap-3">
+                  {chatFiles.length > 0 && (
+                    <div className="flex gap-2 mb-1 overflow-x-auto pb-2">
+                       {chatFiles.map((f, i) => (
+                         <div key={i} className="flex items-center gap-2 bg-gray-200 px-3 py-1.5 rounded-lg text-xs font-mono text-gray-700 shrink-0">
+                            <span className="truncate max-w-[150px]">{f.name}</span>
+                            <button type="button" onClick={() => setChatFiles(prev => prev.filter((_, idx) => idx !== i))} className="text-gray-400 hover:text-red-500">
+                              <X className="w-4 h-4" />
+                            </button>
+                         </div>
+                       ))}
+                    </div>
+                  )}
                   <form onSubmit={sendChatMessage} className="flex gap-3">
+                    <label className="flex items-center justify-center bg-gray-100 hover:bg-gray-200 border border-gray-200 cursor-pointer rounded-xl px-4 transition-colors text-gray-600 group">
+                      <Upload className="w-5 h-5 text-gray-400 group-hover:text-accent-cyan" />
+                      <input type="file" multiple accept="image/*,video/*,.pdf" onChange={(e) => {
+                         if (e.target.files) {
+                           setChatFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+                         }
+                      }} className="hidden" />
+                    </label>
                     <input 
                       type="text" 
                       value={chatMessage}
                       onChange={(e) => setChatMessage(e.target.value)}
-                      placeholder="Prompt : Modifier les titres, adoucir la Vibe..." 
+                      placeholder="Prompt : Ajouter Images & Vidéos, Modifier la vibe..." 
                       className="flex-1 bg-white border border-gray-200 rounded-xl px-5 py-4 text-sm font-mono focus:outline-none focus:border-accent-cyan transition-colors text-gray-700 placeholder:text-gray-300"
                     />
                     <button type="submit" className="bg-gray-100 text-gray-700 p-4 rounded-xl flex items-center justify-center hover:bg-accent-cyan hover:text-gray-700 transition-all">
@@ -588,16 +683,16 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
                   Hublot Visuel
                 </h3>
 
-                <div className="flex gap-2 mb-6">
+                <div className="flex gap-2 mb-8 bg-gray-100/50 p-1.5 rounded-xl border border-gray-100">
                   <button 
                     onClick={() => setManifestTab("existant")}
-                    className={`flex-1 py-2 text-xs uppercase font-bold rounded transition-colors ${manifestTab === "existant" ? "bg-gray-600 text-gray-700 shadow-md" : "bg-gray-50 text-gray-400 hover:bg-gray-100"}`}
+                    className={`flex-1 py-2.5 text-xs uppercase tracking-widest font-bold rounded-lg transition-all duration-300 ${manifestTab === "existant" ? "bg-white text-[#1d1d1f] shadow-sm border border-gray-200" : "text-gray-400 hover:text-gray-600 hover:bg-white/50"}`}
                   >
                     Bilan Existant
                   </button>
                   <button 
                     onClick={() => setManifestTab("proposition")}
-                    className={`flex-1 py-2 text-xs uppercase font-bold rounded transition-colors ${manifestTab === "proposition" ? "bg-accent-cyan text-gray-700 shadow-md" : "bg-gray-50 text-gray-400 hover:bg-gray-100"}`}
+                    className={`flex-1 py-2.5 text-xs uppercase tracking-widest font-bold rounded-lg transition-all duration-300 ${manifestTab === "proposition" ? "bg-gradient-to-r from-[#FF9F1C] to-[#E58000] text-white shadow-md shadow-orange-500/20 border border-orange-500/50" : "text-gray-400 hover:text-gray-600 hover:bg-white/50"}`}
                   >
                     Nouvelle Vibe
                   </button>
@@ -629,6 +724,49 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
                           ))}
                         </div>
                       </div>
+
+                      {manifest.existing_assets.color_palette?.length > 0 && (
+                        <div>
+                          <p className="text-xs font-mono text-gray-400 mb-3 uppercase">Code Couleur Récupéré</p>
+                          <div className="flex flex-wrap gap-2">
+                            {manifest.existing_assets.color_palette.map((color: string, idx: number) => (
+                              <div key={idx} className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-gray-100 shadow-sm">
+                                <div className="w-4 h-4 rounded-full border border-gray-200" style={{ backgroundColor: color }}></div>
+                                <span className="text-xs text-gray-700 font-mono">{color}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {manifest.existing_assets.typography?.length > 0 && (
+                        <div>
+                          <p className="text-xs font-mono text-gray-400 mb-3 uppercase">Typographie(s) Identifiée(s)</p>
+                          <div className="flex flex-wrap gap-2">
+                            {manifest.existing_assets.typography.map((font: string, idx: number) => (
+                              <span key={idx} className="text-sm px-3 py-1 bg-white border border-gray-200 rounded-md text-gray-700 font-mono">
+                                {font}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {manifest.existing_assets.pages_content?.length > 0 && (
+                        <div>
+                          <p className="text-xs font-mono text-gray-400 mb-3 uppercase">Contenu Intégral Préservé (Agendas, Dates, Textes)</p>
+                          <div className="space-y-4">
+                            {manifest.existing_assets.pages_content.map((page: any, idx: number) => (
+                              <div key={idx} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm relative group overflow-hidden">
+                                <h5 className="font-bold text-sm text-gray-800 mb-3">{page.page_url_or_name || `Page ${idx + 1}`}</h5>
+                                <div className="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto custom-scrollbar p-3 bg-gray-50 rounded-lg border border-gray-100 font-mono">
+                                  {page.full_text}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       {manifest.existing_assets.media_links?.length > 0 && (
                         <div>
@@ -827,21 +965,21 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
 function StepCard({ active, done, icon, title, desc, alert = false, colorClass }: { active: boolean, done: boolean, icon: React.ReactNode, title: string, desc: string, alert?: boolean, colorClass: "brand"|"cyan"|"green" }) {
   
   const getColors = () => {
-    if (active && alert) return "border-gray-300 shadow-sm bg-gray-50";
-    if (active && colorClass === "brand") return "border-gray-300 shadow-sm bg-gray-50";
-    if (active && colorClass === "cyan") return "border-accent-cyan/40 shadow-sm bg-gray-50";
-    if (active && colorClass === "green") return "border-gray-300 shadow-sm bg-gray-50";
-    if (done) return "border-gray-200 opacity-60";
-    return "border-gray-100 opacity-30";
+    if (active && alert) return "border-[#FF9F1C] shadow-md bg-orange-50/50";
+    if (active && colorClass === "brand") return "border-[#FF9F1C] shadow-md bg-orange-50/50";
+    if (active && colorClass === "cyan") return "border-[#33a5e8] shadow-md bg-blue-50/50";
+    if (active && colorClass === "green") return "border-[#5A9C51] shadow-md bg-green-50/50";
+    if (done) return "border-gray-200 bg-white opacity-80";
+    return "border-gray-100 bg-gray-50/50 opacity-40";
   };
 
   const getIconColors = () => {
     if (active || done) {
-      if (colorClass === "brand") return "bg-gray-100 text-gray-700 border border-gray-200 shadow-sm";
-      if (colorClass === "cyan") return "bg-gray-100 text-gray-700 border border-gray-300 shadow-sm";
-      if (colorClass === "green") return "bg-gray-100 text-gray-700 border border-gray-200 shadow-sm";
+      if (colorClass === "brand") return "bg-[#FF9F1C] text-white shadow-lg";
+      if (colorClass === "cyan") return "bg-[#33a5e8] text-white shadow-lg";
+      if (colorClass === "green") return "bg-[#5A9C51] text-white shadow-lg";
     }
-    return "bg-gray-50 border border-gray-200 text-gray-300";
+    return "bg-gray-100 border border-gray-200 text-gray-300";
   };
 
   return (
