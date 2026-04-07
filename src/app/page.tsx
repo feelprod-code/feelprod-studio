@@ -463,11 +463,11 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
                     {/* Colonne 2 : Fichier */}
                     <div className="space-y-4 flex flex-col">
                       <label className="block text-xs font-mono text-gray-400 mb-2 uppercase tracking-wide">Dépôt d'Assets (Médias Vidéo DJI/Sony, Photos, PDF)</label>
-                      <label className="flex-1 border-2 border-dashed border-gray-200 bg-white hover:bg-orange-50 hover:border-[#FF9F1C] cursor-pointer rounded-xl transition-all flex flex-col items-center justify-center p-6 group">
+                      <label className="relative overflow-hidden flex-1 border-2 border-dashed border-gray-200 bg-white hover:bg-orange-50 hover:border-[#FF9F1C] cursor-pointer rounded-xl transition-all flex flex-col items-center justify-center p-6 group">
                         <Upload className="w-8 h-8 mb-4 transition-colors text-gray-300 group-hover:text-[#FF9F1C]" />
                         <span className="text-sm text-gray-500 text-center font-medium">Clique ou glisse tes assets FeelProd ici</span>
                         <span className="text-xs text-gray-400 mt-2 font-mono">MP4, JPG, RAW, PDF (Multi-fichiers)</span>
-                        <input type="file" multiple accept=".pdf,image/*,video/*" onChange={handleFileChange} className="hidden" />
+                        <input type="file" multiple accept=".pdf,image/*,video/*" onChange={handleFileChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-[0px]" />
                       </label>
                       {brandFiles.length > 0 && (
                         <div className="flex flex-col gap-2 mt-2 max-h-[140px] overflow-y-auto">
@@ -648,13 +648,13 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
                     </div>
                   )}
                   <form onSubmit={sendChatMessage} className="flex gap-3">
-                    <label className="flex items-center justify-center bg-gray-100 hover:bg-gray-200 border border-gray-200 cursor-pointer rounded-xl px-4 transition-colors text-gray-600 group">
+                    <label className="relative overflow-hidden flex items-center justify-center bg-gray-100 hover:bg-gray-200 border border-gray-200 cursor-pointer rounded-xl px-4 transition-colors text-gray-600 group">
                       <Upload className="w-5 h-5 text-gray-400 group-hover:text-accent-cyan" />
                       <input type="file" multiple accept="image/*,video/*,.pdf" onChange={(e) => {
                          if (e.target.files) {
                            setChatFiles(prev => [...prev, ...Array.from(e.target.files!)]);
                          }
-                      }} className="hidden" />
+                      }} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-[0px]" />
                     </label>
                     <input 
                       type="text" 
