@@ -35,9 +35,11 @@ export async function POST(req: Request) {
            console.log(`✅ [AUDIT] Crawl intégral réussi : ${res.data.length} pages aspirées.`);
         } else {
            console.warn(`Erreur Firecrawl Crawl : le format de retour est inattendu. Réponse brute :`, JSON.stringify(res).substring(0, 500));
+           throw new Error(res.error || "Aspiration Firecrawl échouée (Clé invalide, crédit épuisé, ou Site bloqué).");
         }
-      } catch(e) {
-        console.warn("⚠️ Pas de clé Firecrawl ou erreur lors du crawl :", e);
+      } catch(e: any) {
+        console.warn("⚠️ Erreur silencieuse d'aspiration Firecrawl interceptée :", e);
+        throw new Error(e.message?.includes("token") ? "Clé API Firecrawl Invalide ou Expirée." : "Aspiration Firecrawl échouée : " + e.message);
       }
     } else {
       console.log(`🚀 [AUDIT] Mode "From Scratch" activé. Pas d'URL cible à analyser.`);
