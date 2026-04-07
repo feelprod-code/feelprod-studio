@@ -200,8 +200,25 @@ export default function FeelProdStudioDashboard() {
     
     try {
       let preparedFiles: any[] = [];
+      let uploadedFileUrls: string[] = [];
+      
       if (chatFiles.length > 0) {
-        preparedFiles = await Promise.all(chatFiles.map(async (f) => {
+        // 1. Upload local des fichiers pour générer des URLs publiques
+        const formData = new FormData();
+        chatFiles.forEach(f => formData.append('files', f));
+        try {
+          const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
+          const uploadData = await uploadRes.json();
+          if (uploadData.success && uploadData.files) {
+             uploadedFileUrls = uploadData.files.map((f:any) => f.url);
+          }
+        } catch (e) {
+          console.warn("Upload local échoué dans le chat :", e);
+        }
+
+        // 2. Conversion en base64 EXCLUSIVEMENT pour les images (Gemini bloque les JSON énormes pour les vidéos)
+        const imageFiles = chatFiles.filter(f => f.type.startsWith('image/'));
+        preparedFiles = await Promise.all(imageFiles.map(async (f) => {
           const base64Url = await new Promise<string>((resolve) => {
             const reader = new FileReader();
             reader.onloadend = () => resolve(reader.result as string);
@@ -224,20 +241,34 @@ export default function FeelProdStudioDashboard() {
         throw new Error(data.error || "Erreur de communication avec l'IA.");
       }
       
-      if (data.updated_manifest && typeof data.updated_manifest === 'object') {
-        // Deep merge intelligent : si c'est global, on fusionne ce qui est proposé.
-        setManifest((prev: any) => {
-          if (!prev) return data.updated_manifest;
-          const merged = { ...prev };
+      // Inject uploaded files URLs directly into the existing_assets
+      setManifest((prev: any) => {
+        if (!prev) {
+          if (data.updated_manifest) return data.updated_manifest;
+          return prev;
+        }
+        
+        const merged = { ...prev };
+        
+        // Append newly uploaded videos/images local URLs to manifest
+        if (uploadedFileUrls.length > 0) {
+          if (!merged.existing_assets) merged.existing_assets = {};
+          merged.existing_assets.media_links = [
+            ...(merged.existing_assets.media_links || []),
+            ...uploadedFileUrls
+          ];
+        }
+
+        if (data.updated_manifest && typeof data.updated_manifest === 'object') {
           if (data.updated_manifest.existing_assets) {
             merged.existing_assets = { ...merged.existing_assets, ...data.updated_manifest.existing_assets };
           }
           if (data.updated_manifest.proposed_strategy) {
             merged.proposed_strategy = { ...merged.proposed_strategy, ...data.updated_manifest.proposed_strategy };
           }
-          return merged;
-        });
-      }
+        }
+        return merged;
+      });
       setChatHistory(prev => [...prev, { role: "bot", content: data.reply }]);
     } catch (err: any) {
       console.error(err);
@@ -466,8 +497,8 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
                       <label className="relative overflow-hidden flex-1 border-2 border-dashed border-gray-200 bg-white hover:bg-orange-50 hover:border-[#FF9F1C] cursor-pointer rounded-xl transition-all flex flex-col items-center justify-center p-6 group">
                         <Upload className="w-8 h-8 mb-4 transition-colors text-gray-300 group-hover:text-[#FF9F1C]" />
                         <span className="text-sm text-gray-500 text-center font-medium">Clique ou glisse tes assets FeelProd ici</span>
-                        <span className="text-xs text-gray-400 mt-2 font-mono">MP4, JPG, RAW, PDF (Multi-fichiers)</span>
-                        <input type="file" multiple accept=".pdf,image/*,video/*" onChange={handleFileChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-[0px]" />
+                        <span className="text-xs text-gray-400 mt-2 font-mono">MP4, MOV, JPG, RAW, PDF (Multi-fichiers)</span>
+                        <input type="file" multiple accept=".pdf,image/*,video/*,.mp4,.mov" onChange={handleFileChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-[0px]" />
                       </label>
                       {brandFiles.length > 0 && (
                         <div className="flex flex-col gap-2 mt-2 max-h-[140px] overflow-y-auto">
@@ -650,7 +681,7 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
                   <form onSubmit={sendChatMessage} className="flex gap-3">
                     <label className="relative overflow-hidden flex items-center justify-center bg-gray-100 hover:bg-gray-200 border border-gray-200 cursor-pointer rounded-xl px-4 transition-colors text-gray-600 group">
                       <Upload className="w-5 h-5 text-gray-400 group-hover:text-accent-cyan" />
-                      <input type="file" multiple accept="image/*,video/*,.pdf" onChange={(e) => {
+                      <input type="file" multiple accept=".pdf,image/*,video/*,.mp4,.mov" onChange={(e) => {
                          if (e.target.files) {
                            setChatFiles(prev => [...prev, ...Array.from(e.target.files!)]);
                          }
