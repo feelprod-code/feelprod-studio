@@ -16,6 +16,11 @@ const bebasNeue = Bebas_Neue({
 export const metadata: Metadata = {
   title: "FeelProd Studio",
   description: "La Forge d'Applications FeelProd",
+  appleWebApp: {
+    capable: true,
+    title: "FeelProd Studio",
+    statusBarStyle: "default",
+  },
 };
 
 export default function RootLayout({
