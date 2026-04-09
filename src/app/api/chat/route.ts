@@ -47,10 +47,16 @@ Format JSON EXACT requis (strictement un objet JSON valide, sans bloc markdown) 
       }
     }
 
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey || apiKey === "VOTRE_CLEF_ICI") {
+      console.error("❌ [OPENROUTER] Erreur : Clé API manquante ou non configurée dans .env.local");
+      throw new Error("Clé API OpenRouter non configurée. Vérifiez votre fichier .env.local et redémarrez le serveur.");
+    }
+
     const openRouterRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({

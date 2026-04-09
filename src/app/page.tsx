@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Copy, Wand2, Settings2, Code2, CheckCircle2, Activity, X, Send, Bot, User, Flame, ChevronDown, ChevronUp, Upload, File, Compass, Layers, Smartphone, Tablet, Monitor, Mic, MicOff, Loader2 } from "lucide-react";
 
@@ -40,9 +40,12 @@ const ImageWithLoader = ({ src, alt }: { src: string, alt: string }) => {
 };
 
 export default function FeelProdStudioDashboard() {
+  const [mounted, setMounted] = useState(false);
   const [url, setUrl] = useState("");
   const [stage, setStage] = useState<Stage>("idle");
   const [manifest, setManifest] = useState<any>(null);
+  
+  useEffect(() => setMounted(true), []);
   const [manifestTab, setManifestTab] = useState<"existant" | "proposition">("existant");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [generatedImages, setGeneratedImages] = useState<string[]>([]);
@@ -65,8 +68,10 @@ export default function FeelProdStudioDashboard() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      setBrandFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+      const newFiles = Array.from(e.target.files);
+      setBrandFiles(prev => [...prev, ...newFiles]);
     }
+    e.target.value = '';
   };
 
   const toggleRecording = () => {
@@ -117,8 +122,7 @@ export default function FeelProdStudioDashboard() {
     
     try {
       let uploadedFileUrls: string[] = [];
-      let firstImageBase64 = null;
-      let firstImageMimeType = null;
+      let contextFiles: any[] = [];
       
       if (brandFiles.length > 0) {
         // Upload physical files locally
@@ -126,31 +130,42 @@ export default function FeelProdStudioDashboard() {
         brandFiles.forEach(f => formData.append('files', f));
         
         try {
+          console.log(`📤 [UPLOAD] Envoi de ${brandFiles.length} fichiers...`);
           const uploadRes = await fetch('/api/upload', {
              method: 'POST',
              body: formData
           });
+          
+          if (!uploadRes.ok) {
+            const errText = await uploadRes.text();
+            throw new Error(`Erreur Upload (${uploadRes.status}): ${errText}`);
+          }
+
           const uploadData = await uploadRes.json();
           if (uploadData.success && uploadData.files) {
              uploadedFileUrls = uploadData.files.map((f:any) => f.url);
+             console.log("✅ [UPLOAD] Assets enregistrés :", uploadedFileUrls);
           }
-        } catch (e) {
-          console.warn("Upload local échoué:", e);
+        } catch (uErr: any) {
+          console.error("❌ [UPLOAD] Échec :", uErr);
+          if (uErr.message.includes("413")) {
+            alert("⚠️ Certains fichiers sont trop lourds. Ils ne seront pas tous inclus.");
+          }
         }
 
-        // Convert only the first image for Gemini vision analysis context
-        const firstImage = brandFiles.find(f => f.type.startsWith('image/'));
-        if (firstImage) {
-          const reader = new FileReader();
-          const base64Promise = new Promise<string>((resolve) => {
-            reader.onloadend = () => {
-              const result = reader.result as string;
-              resolve(result.split(',')[1]);
-            };
-          });
-          reader.readAsDataURL(firstImage);
-          firstImageBase64 = await base64Promise;
-          firstImageMimeType = firstImage.type;
+
+        // Convert all valid files for Gemini vision analysis context (Images and PDFs)
+        const validContextFiles = brandFiles.filter(f => f.type.startsWith('image/') || f.type === 'application/pdf');
+        
+        if (validContextFiles.length > 0) {
+          contextFiles = await Promise.all(validContextFiles.map(async (f) => {
+            const reader = new FileReader();
+            const base64Promise = new Promise<string>((resolve) => {
+              reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+            });
+            reader.readAsDataURL(f);
+            return { data: await base64Promise, mimeType: f.type };
+          }));
         }
       }
 
@@ -161,7 +176,7 @@ export default function FeelProdStudioDashboard() {
            url, 
            inspirationUrl, 
            briefText, 
-           file: firstImageBase64 ? { data: firstImageBase64, mimeType: firstImageMimeType } : null,
+           contextFiles,
            uploadedFiles: uploadedFileUrls
         })
       });
@@ -348,11 +363,13 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
     setTimeout(() => setCopied(false), 2000);
   };
 
+  if (!mounted) return <div className="min-h-screen bg-[#FAF6ED] flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-gray-400" /></div>;
+
   return (
     <main className="min-h-screen py-16 px-6 max-w-6xl mx-auto flex flex-col gap-12 text-gray-700">
-      <header className="flex items-center justify-between">
+      <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-white border border-gray-200 shadow-sm flex items-center justify-center">
+          <div className="w-14 h-14 rounded-2xl bg-white border border-gray-200 shadow-sm flex items-center justify-center shrink-0">
             {/* Custom FeelProd Studio Icon (Record / Focus) */}
             <div className="relative w-8 h-8 rounded-full border-[3px] border-[#1d1d1f] flex items-center justify-center shadow-inner">
               <div className="w-3 h-3 bg-[#FF9F1C] rounded-full animate-pulse" />
@@ -360,11 +377,11 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
             </div>
           </div>
           <div>
-            <h1 className="text-3xl tracking-wide uppercase font-[family-name:var(--font-bebas-neue)] text-[#1d1d1f]">FeelProd <span className="text-[#FF9F1C]">Studio</span></h1>
+            <h1 className="text-2xl sm:text-3xl tracking-wide uppercase font-[family-name:var(--font-bebas-neue)] text-[#1d1d1f]">FeelProd <span className="text-[#FF9F1C]">Studio</span></h1>
             <p className="text-[10px] text-gray-500 font-mono uppercase tracking-widest mt-1">La Forge d'applications • Création & Refonte</p>
           </div>
         </div>
-        <div className="flex items-center gap-3 text-xs font-mono bg-panel shadow-sm border border-gray-200 px-4 py-2 rounded-full">
+        <div className="hidden sm:flex items-center gap-3 text-xs font-mono bg-panel shadow-sm border border-gray-200 px-4 py-2 rounded-full">
           <div className="w-2 h-2 rounded-full bg-accent-green animate-pulse" />
           <span className="text-gray-500">NODE ACTIVE</span>
         </div>
@@ -397,9 +414,9 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
             
             <button 
               type="submit"
-              disabled={(!url && !inspirationUrl && !briefText) || (stage !== "idle" && stage !== "vibe-check")}
+              disabled={(!url && !inspirationUrl && !briefText && brandFiles.length === 0) || (stage !== "idle" && stage !== "vibe-check")}
               className={`text-white px-10 rounded-2xl font-[family-name:var(--font-bebas-neue)] tracking-wider text-xl transition-all flex items-center justify-center min-w-[220px] shadow-lg ${
-                (!url && !inspirationUrl && !briefText) ? "opacity-50" : (stage !== "idle" && stage !== "vibe-check" ? "opacity-90 cursor-not-allowed" : "")
+                (!url && !inspirationUrl && !briefText && brandFiles.length === 0) ? "opacity-50" : (stage !== "idle" && stage !== "vibe-check" ? "opacity-90 cursor-not-allowed" : "")
               } ${
                 (stage === 'builder' || stage === 'done') ? 'bg-[#5A9C51] hover:opacity-90' : 'bg-gradient-to-r from-[#FF9F1C] to-[#E3651F] hover:opacity-90'
               }`}
@@ -494,7 +511,18 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
                     {/* Colonne 2 : Fichier */}
                     <div className="space-y-4 flex flex-col">
                       <label className="block text-xs font-mono text-gray-400 mb-2 uppercase tracking-wide">Dépôt d'Assets (Médias Vidéo DJI/Sony, Photos, PDF)</label>
-                      <label className="relative overflow-hidden flex-1 border-2 border-dashed border-gray-200 bg-white hover:bg-orange-50 hover:border-[#FF9F1C] cursor-pointer rounded-xl transition-all flex flex-col items-center justify-center p-6 group">
+                      <label 
+                        className="relative overflow-hidden flex-1 border-2 border-dashed border-gray-200 bg-white hover:bg-orange-50 hover:border-[#FF9F1C] cursor-pointer rounded-xl transition-all flex flex-col items-center justify-center p-6 group"
+                        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                            const newFiles = Array.from(e.dataTransfer.files);
+                            setBrandFiles(prev => [...prev, ...newFiles]);
+                          }
+                        }}
+                      >
                         <Upload className="w-8 h-8 mb-4 transition-colors text-gray-300 group-hover:text-[#FF9F1C]" />
                         <span className="text-sm text-gray-500 text-center font-medium">Clique ou glisse tes assets FeelProd ici</span>
                         <span className="text-xs text-gray-400 mt-2 font-mono">MP4, MOV, JPG, RAW, PDF (Multi-fichiers)</span>
@@ -578,10 +606,10 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
                initial={{ opacity: 0, scale: 0.98, y: 10 }}
                animate={{ opacity: 1, scale: 1, y: 0 }}
                exit={{ opacity: 0, scale: 0.98, y: 10 }}
-               className="bg-white w-full max-w-6xl h-full md:h-[85vh] overflow-hidden md:rounded-2xl shadow-sm border border-gray-200 flex flex-col md:flex-row"
+               className="bg-white w-full max-w-6xl h-full md:h-[85vh] overflow-hidden md:rounded-2xl shadow-sm border border-gray-200 flex flex-col lg:flex-row"
             >
               {/* Panneau de Gauche : Aperçu */}
-              <div className="hidden md:flex flex-1 border-r border-gray-100 bg-gray-50 p-8 flex-col gap-8 overflow-y-auto relative">
+              <div className="hidden lg:flex flex-1 border-r border-gray-100 bg-gray-50 p-8 flex-col gap-8 overflow-y-auto relative">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-gray-50 blur-[100px] pointer-events-none" />
 
                  <h3 className="text-xl font-bold flex items-center gap-3 uppercase tracking-wide">
@@ -626,7 +654,7 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
               </div>
 
               {/* Panneau de Droite : Chat Gemini */}
-              <div className="flex-1 flex flex-col bg-white">
+              <div className="flex-1 flex flex-col bg-white min-h-[50vh] lg:min-h-0">
                 <div className="border-b border-gray-100 p-6 bg-white flex justify-between items-center z-10">
                   <div className="flex items-center gap-3">
                     <Bot className="w-5 h-5 text-gray-700" />
@@ -679,12 +707,25 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
                     </div>
                   )}
                   <form onSubmit={sendChatMessage} className="flex gap-3">
-                    <label className="relative overflow-hidden flex items-center justify-center bg-gray-100 hover:bg-gray-200 border border-gray-200 cursor-pointer rounded-xl px-4 transition-colors text-gray-600 group">
+                    <label 
+                      className="relative overflow-hidden flex items-center justify-center bg-gray-100 hover:bg-gray-200 border border-gray-200 cursor-pointer rounded-xl px-4 transition-colors text-gray-600 group"
+                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                          const files = Array.from(e.dataTransfer.files);
+                          setChatFiles(prev => [...prev, ...files]);
+                        }
+                      }}
+                    >
                       <Upload className="w-5 h-5 text-gray-400 group-hover:text-accent-cyan" />
                       <input type="file" multiple accept=".pdf,image/*,video/*,.mp4,.mov" onChange={(e) => {
-                         if (e.target.files) {
-                           setChatFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+                         if (e.target.files && e.target.files.length > 0) {
+                           const files = Array.from(e.target.files);
+                           setChatFiles(prev => [...prev, ...files]);
                          }
+                         e.target.value = '';
                       }} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-[0px]" />
                     </label>
                     <input 
@@ -708,7 +749,7 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
               </div>
 
               {/* Colonne 3 : Variables & Stats */}
-              <div className="border-l border-gray-200 bg-gray-50 overflow-y-auto p-4 lg:p-6 order-3 min-h-[400px] lg:min-h-0">
+              <div className="border-t lg:border-t-0 lg:border-l border-gray-200 bg-gray-50 overflow-y-auto p-4 lg:p-6 order-3 w-full lg:w-[380px] lg:shrink-0 max-h-[50vh] lg:max-h-none">
                 <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
                   <Layers className="text-gray-400" />
                   Hublot Visuel
@@ -874,22 +915,22 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
               <h2 className="text-3xl font-bold text-gray-700">Plan de Déploiement</h2>
               <p className="text-gray-500 mb-8 max-w-2xl mx-auto">Le Manifeste est finalisé et épuré. Comment souhaites-tu concrétiser ce projet ?</p>
 
-              <div className="flex flex-col md:flex-row items-center justify-center gap-4 mb-8 bg-gray-50 p-3 rounded-2xl border border-gray-100 inline-flex mx-auto">
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 mb-8 bg-gray-50 p-3 rounded-2xl border border-gray-100 w-full sm:w-auto mx-auto">
                 <button 
                   onClick={() => setDeviceType("mobile")}
-                  className={`px-8 py-3 rounded-xl border transition-all flex items-center gap-3 font-semibold text-sm ${deviceType === "mobile" ? "border-gray-400 bg-gray-200 text-gray-700 shadow-sm" : "border-transparent text-gray-400 hover:bg-gray-50"}`}
+                  className={`px-4 sm:px-8 py-3 rounded-xl border transition-all flex items-center justify-center gap-2 sm:gap-3 font-semibold text-sm flex-1 sm:flex-none ${deviceType === "mobile" ? "border-gray-400 bg-gray-200 text-gray-700 shadow-sm" : "border-transparent text-gray-400 hover:bg-gray-50"}`}
                 >
                   <Smartphone className="w-5 h-5" /> iPhone / Mobile First
                 </button>
                 <button 
                   onClick={() => setDeviceType("tablet")}
-                  className={`px-8 py-3 rounded-xl border transition-all flex items-center gap-3 font-semibold text-sm ${deviceType === "tablet" ? "border-gray-400 bg-gray-200 text-gray-700 shadow-sm" : "border-transparent text-gray-400 hover:bg-gray-50"}`}
+                  className={`px-4 sm:px-8 py-3 rounded-xl border transition-all flex items-center justify-center gap-2 sm:gap-3 font-semibold text-sm flex-1 sm:flex-none ${deviceType === "tablet" ? "border-gray-400 bg-gray-200 text-gray-700 shadow-sm" : "border-transparent text-gray-400 hover:bg-gray-50"}`}
                 >
                   <Tablet className="w-5 h-5" /> Tablette
                 </button>
                 <button 
                   onClick={() => setDeviceType("desktop")}
-                  className={`px-8 py-3 rounded-xl border transition-all flex items-center gap-3 font-semibold text-sm ${deviceType === "desktop" ? "border-gray-400 bg-gray-200 text-gray-700 shadow-sm" : "border-transparent text-gray-400 hover:bg-gray-50"}`}
+                  className={`px-4 sm:px-8 py-3 rounded-xl border transition-all flex items-center justify-center gap-2 sm:gap-3 font-semibold text-sm flex-1 sm:flex-none ${deviceType === "desktop" ? "border-gray-400 bg-gray-200 text-gray-700 shadow-sm" : "border-transparent text-gray-400 hover:bg-gray-50"}`}
                 >
                   <Monitor className="w-5 h-5" /> Desktop
                 </button>
@@ -938,13 +979,13 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
                     exit={{ opacity: 0, scale: 0.95 }}
                     className={`mt-10 p-6 rounded-2xl text-left relative overflow-hidden group ${builderOption === "fast" ? 'bg-gray-50 border border-gray-200' : 'bg-gray-50 border border-gray-200'}`}
                   >
-                    <div className="flex justify-between items-center mb-6">
-                      <h4 className="text-gray-700 font-mono text-sm uppercase font-semibold">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
+                      <h4 className="text-gray-700 font-mono text-xs sm:text-sm uppercase font-semibold">
                         {builderOption === "fast" ? "Prompt à copier dans Stitch" : "Instruction à copier dans Antigravity"}
                       </h4>
                       <button 
                         onClick={() => copyToClipboard(builderOption === "fast" ? getFastPrompt() : getDeepPrompt())}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wide transition-all ${copied ? 'bg-green-500 text-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wide transition-all shrink-0 ${copied ? 'bg-green-500 text-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                       >
                         {copied ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                         {copied ? "Copié !" : "Copier le texte"}
