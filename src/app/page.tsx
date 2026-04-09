@@ -525,8 +525,8 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
                       >
                         <Upload className="w-8 h-8 mb-4 transition-colors text-gray-300 group-hover:text-[#FF9F1C]" />
                         <span className="text-sm text-gray-500 text-center font-medium">Clique ou glisse tes assets FeelProd ici</span>
-                        <span className="text-xs text-gray-400 mt-2 font-mono">MP4, MOV, JPG, RAW, PDF (Multi-fichiers)</span>
-                        <input type="file" multiple accept=".pdf,image/*,video/*,.mp4,.mov" onChange={handleFileChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-[0px]" />
+                        <span className="text-xs text-gray-400 mt-2 font-mono">MP4, MOV, JPG, RAW, PDF, Audio (Multi-fichiers)</span>
+                        <input type="file" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt" onChange={handleFileChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-[0px]" />
                       </label>
                       {brandFiles.length > 0 && (
                         <div className="flex flex-col gap-2 mt-2 max-h-[140px] overflow-y-auto">
@@ -720,7 +720,7 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
                       }}
                     >
                       <Upload className="w-5 h-5 text-gray-400 group-hover:text-accent-cyan" />
-                      <input type="file" multiple accept=".pdf,image/*,video/*,.mp4,.mov" onChange={(e) => {
+                      <input type="file" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.mp4,.mov" onChange={(e) => {
                          if (e.target.files && e.target.files.length > 0) {
                            const files = Array.from(e.target.files);
                            setChatFiles(prev => [...prev, ...files]);
