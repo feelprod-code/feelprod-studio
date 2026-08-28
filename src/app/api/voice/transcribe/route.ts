@@ -89,8 +89,6 @@ Règles d'or orthographiques & cliniques :
    - Supprime les hésitations (euh, hum, bah).
 4. Renvoie UNIQUEMENT le texte retranscrit et nettoyé, sans commentaires superflus avant ou après.`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-
     const geminiPayload = {
       contents: [{
         parts: [
@@ -109,23 +107,39 @@ Règles d'or orthographiques & cliniques :
       }
     };
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(geminiPayload)
-    });
+    // Modèles cibles : Gemini 3.5 Transcribe en priorité, puis fallback 2.5 Flash
+    const modelsToTry = ["gemini-3.5-transcribe", "gemini-2.5-flash"];
+    let transcript = "";
+    let lastError = "";
 
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error("Gemini API Error:", response.status, errText);
-      return NextResponse.json(
-        { error: `Erreur Gemini API (${response.status}) : ${errText.slice(0, 200)}` },
-        { status: response.status }
-      );
+    for (const model of modelsToTry) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(geminiPayload)
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          transcript = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+          if (transcript) break;
+        } else {
+          lastError = await response.text();
+          console.warn(`Model ${model} returned ${response.status}: ${lastError.slice(0, 100)}`);
+        }
+      } catch (err: any) {
+        lastError = err.message;
+      }
     }
 
-    const data = await response.json();
-    const transcript = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+    if (!transcript) {
+      return NextResponse.json(
+        { error: `Erreur transcription Gemini : ${lastError.slice(0, 200)}` },
+        { status: 500 }
+      );
+    }
     const wordCount = transcript ? transcript.split(/\s+/).filter(Boolean).length : 0;
 
     return NextResponse.json({
