@@ -306,7 +306,7 @@ export default function FeelProdVoiceMobileApp() {
       setIsRecording(false);
       setIsPaused(false);
       setIsProcessing(true);
-      setStatusMessage("Gemini 2.5 Flash transcrit votre voix...");
+      setStatusMessage("Gemini 3.5 Transcribe transcrit votre voix...");
     }
   };
 
@@ -465,7 +465,7 @@ export default function FeelProdVoiceMobileApp() {
         doc.setFont("helvetica", "bold");
         doc.setFontSize(13);
         doc.setTextColor(35, 68, 88);
-        doc.text("📑 SYNTHÈSE & ANALYSE STRUCTURÉE (GEMINI 2.5 FLASH)", 15, cursorY);
+        doc.text("📑 SYNTHÈSE & ANALYSE STRUCTURÉE (GEMINI 3.5 TRANSCRIBE)", 15, cursorY);
         cursorY += 7;
 
         doc.setFont("helvetica", "normal");
@@ -589,8 +589,8 @@ ${transcript}
             <div>
               <h1 className="font-extrabold text-base tracking-tight text-[#162734] leading-tight flex items-center gap-1.5">
                 FEELPROD VOICE
-                <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 bg-[#7EAEC8]/20 text-[#234458] rounded-full">
-                  2.5 Flash
+                <span className="text-[10px] uppercase font-bold px-2 py-0.5 bg-[#7EAEC8]/25 text-[#234458] rounded-full border border-[#7EAEC8]/40">
+                  3.5 TRANSCRIBE
                 </span>
               </h1>
               <p className="text-xs text-[#8C4E33] font-medium">
@@ -1009,7 +1009,7 @@ ${transcript}
                         <div className="p-8 text-center bg-[#FAF7F2] rounded-xl border border-[#E6DEC8] animate-pulse">
                           <Sparkles className="w-8 h-8 text-purple-600 animate-spin mx-auto mb-2" />
                           <p className="text-xs font-bold text-purple-900">Génération neuronale en cours...</p>
-                          <p className="text-[11px] text-gray-500 mt-1">Structuration TDT par Gemini 2.5 Flash</p>
+                          <p className="text-[11px] text-gray-500 mt-1">Structuration TDT par Gemini 3.5 Transcribe</p>
                         </div>
                       ) : analysisText ? (
                         <div className="space-y-2">
