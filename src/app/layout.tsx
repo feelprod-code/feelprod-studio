@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Montserrat, Bebas_Neue } from "next/font/google";
 import "./globals.css";
 
@@ -13,13 +13,26 @@ const bebasNeue = Bebas_Neue({
   subsets: ["latin"],
 });
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#FAF7F2"
+};
+
 export const metadata: Metadata = {
-  title: "FeelProd Studio",
-  description: "La Forge d'Applications FeelProd",
+  title: "FeelProd Voice — Assistant Vocal & Dictée TDT",
+  description: "Application officielle de dictée vocale, transcription Gemini 2.5 Flash, synthèse clinique et export PDF pour iPhone & Mac de Guillaume Philippe.",
   appleWebApp: {
     capable: true,
-    title: "FeelProd Studio",
+    title: "FeelProd Voice",
     statusBarStyle: "default",
+  },
+  icons: {
+    icon: "/icon.png",
+    apple: "/apple-touch-icon.png",
   },
 };
 
@@ -34,7 +47,9 @@ export default function RootLayout({
       className={`${montserrat.variable} ${bebasNeue.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col font-sans bg-[#FAF6ED]" suppressHydrationWarning>{children}</body>
+      <body className="min-h-full flex flex-col font-sans bg-[#FAF7F2]" suppressHydrationWarning>
+        {children}
+      </body>
     </html>
   );
 }

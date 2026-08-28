@@ -381,9 +381,18 @@ Antigravity, confirme que tu as bien pris connaissance du brief et lance ton ter
             <p className="text-[10px] text-gray-500 font-mono uppercase tracking-widest mt-1">La Forge d'applications • Création & Refonte</p>
           </div>
         </div>
-        <div className="hidden sm:flex items-center gap-3 text-xs font-mono bg-panel shadow-sm border border-gray-200 px-4 py-2 rounded-full">
-          <div className="w-2 h-2 rounded-full bg-accent-green animate-pulse" />
-          <span className="text-gray-500">NODE ACTIVE</span>
+        <div className="flex items-center gap-3">
+          <a
+            href="/voice"
+            className="flex items-center gap-2 text-xs font-bold bg-[#234458] text-white shadow-sm border border-[#234458] px-4 py-2 rounded-full active:scale-95 transition-all hover:bg-[#162734]"
+          >
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+            <span>🎙️ FeelProd Voice (iPhone & Mac)</span>
+          </a>
+          <div className="hidden sm:flex items-center gap-2 text-xs font-mono bg-panel shadow-sm border border-gray-200 px-3 py-2 rounded-full">
+            <div className="w-2 h-2 rounded-full bg-accent-green animate-pulse" />
+            <span className="text-gray-500">NODE ACTIVE</span>
+          </div>
         </div>
       </header>
 
