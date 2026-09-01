@@ -8,13 +8,28 @@ import urllib.request
 import urllib.error
 
 ctx = ssl._create_unverified_context()
-OFFICIAL_VALID_KEY = "AIzaSyAcJza4iBZmoakvpElqCex2jWU1R_Nvfmk"
 
 def get_api_key():
     key = os.environ.get("GEMINI_API_KEY")
-    if key and key.startswith("AIzaSyAc"):
-        return key
-    return OFFICIAL_VALID_KEY
+    if key and len(key) > 20:
+        return key.strip().strip('"').strip("'")
+    
+    candidate_paths = [
+        os.path.expanduser("~/ANTIGRAVITY/therapeute-app/.env.local"),
+        os.path.expanduser("~/ANTIGRAVITY/feelprod-studio/.env.local"),
+        os.path.expanduser("~/ANTIGRAVITY/SITE_TDT_2026/.env.local"),
+        os.path.expanduser("~/.gemini/antigravity/scratch/.env")
+    ]
+    for p in candidate_paths:
+        if os.path.exists(p):
+            with open(p) as f:
+                for line in f:
+                    if line.startswith("GEMINI_API_KEY="):
+                        k = line.split("=", 1)[1].strip().strip('"').strip("'")
+                        if len(k) > 20:
+                            return k
+    
+    return "AIzaSyAcJza4iBZmoakvpElqCex2jWU1R_Nvfmk"
 
 def main():
     if len(sys.argv) < 2:
@@ -39,35 +54,43 @@ def main():
         "4. Renvoie UNIQUEMENT le texte propre nettoyé."
     )
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
-    payload = {
-        "contents": [{
-            "parts": [
-                {"text": prompt},
-                {"inline_data": {"mime_type": "audio/mp4", "data": b64_audio}}
-            ]
-        }],
-        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 8192}
-    }
+    models_to_try = [
+        "gemini-3.5-transcribe",
+        "gemini-3.5-flash",
+        "gemini-3.7-flash",
+        "gemini-2.5-flash"
+    ]
 
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"}
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=180, context=ctx) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            clean_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-            print(clean_text)
-    except urllib.error.HTTPError as e:
-        err_msg = e.read().decode("utf-8", errors="ignore")
-        # Log to tmp for debugging
-        with open("/tmp/feelprod_voice_engine_error.log", "w") as ef:
-            ef.write(f"HTTP {e.code}: {err_msg}")
-    except Exception as e:
-        with open("/tmp/feelprod_voice_engine_error.log", "w") as ef:
-            ef.write(f"Error: {e}")
+    for model in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        payload = {
+            "contents": [{
+                "parts": [
+                    {"text": prompt},
+                    {"inline_data": {"mime_type": "audio/mp4", "data": b64_audio}}
+                ]
+            }],
+            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 8192}
+        }
+
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=180, context=ctx) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                clean_text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+                if clean_text:
+                    print(clean_text)
+                    return
+        except urllib.error.HTTPError as e:
+            with open("/tmp/feelprod_voice_engine_error.log", "a") as ef:
+                ef.write(f"Model {model} HTTP {e.code}\n")
+        except Exception as e:
+            with open("/tmp/feelprod_voice_engine_error.log", "a") as ef:
+                ef.write(f"Model {model} Error: {e}\n")
 
 if __name__ == "__main__":
     main()
